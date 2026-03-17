@@ -1,0 +1,30 @@
+# Python-generated files
+**/__pycache__/
+**/*.py[oc]
+**/build/
+**/dist/
+**/wheels/
+**/*.egg-info
+
+# Virtual environments
+**/.venv
+
+# Rust
+**/target
+
+# credentials
+**/*.env
+**/.env
+**/.env.*
+!**/.env.example
+
+# macOS
+**/.DS_Store
+
+# SQLite DB
+**/*.db
+
+# VSCode
+**/.vscode/
+BOT_ADD_LINK.md
+/secrets
