@@ -41,19 +41,40 @@ pub async fn run(
     tracing::info!("Starting scrape_intros command execution...");
 
     let existing_user_ids = crate::get_existing_user_ids(pool).await?;
+
+    if !crate::all_elements_unique(&existing_user_ids) {
+        tracing::error!("There are duplicate users in the database",);
+    }
+
     tracing::info!(
         "Found {} existing users in database",
         existing_user_ids.len()
     );
 
-    let members = guild_id
-        .members(&ctx.http, Some(1000), None)
-        .await
-        .map_err(AppError::SerenityError)?;
+    let mut members = Vec::new();
+    let mut last_member_id = None;
+    loop {
+        let chunk = guild_id
+            .members(&ctx.http, Some(1000), last_member_id)
+            .await
+            .map_err(AppError::SerenityError)?;
+
+        if chunk.is_empty() {
+            break;
+        }
+
+        last_member_id = Some(chunk.last().unwrap().user.id);
+        let is_last_chunk = chunk.len() < 1000;
+        members.extend(chunk);
+
+        if is_last_chunk {
+            break;
+        }
+    }
 
     tracing::info!("Fetched {} members from the guild", members.len());
 
-    // 1. Identify exactly who is missing an intro
+    // 1. Identify who is missing an intro
     let mut missing_users: HashSet<UserId> = HashSet::new();
     let mut user_names = std::collections::HashMap::new();
 
@@ -83,7 +104,7 @@ pub async fn run(
     // 2. Scan the channel backwards, crossing off users as we find their messages
     loop {
         if missing_users.is_empty() {
-            tracing::info!("All missing users found! Stopping channel scan early.");
+            tracing::info!("Introductions for all users found.");
             break;
         }
 
@@ -98,14 +119,14 @@ pub async fn run(
             .map_err(AppError::SerenityError)?;
 
         if messages.is_empty() {
-            tracing::info!("Reached the beginning of the channel.");
+            tracing::info!("Reached the beginning of the introductions channel, stopping search.");
             break;
         }
 
         for message in &messages {
             let author_id = message.author.id;
 
-            // If this message belongs to someone we are looking for...
+            // If this message belongs to someone we are looking for
             if missing_users.remove(&author_id) {
                 let username = user_names.get(&author_id).cloned().unwrap_or_default();
 
@@ -134,51 +155,27 @@ pub async fn run(
 
         // If we got fewer than 100 messages, we're at the very beginning of the channel
         if messages.len() < 100 {
+            tracing::info!("Reached the beginning of the introductions channel, stopping search.");
             break;
         }
     }
 
-    // 3. Anyone left in `missing_users` means we scanned the whole channel and found nothing.
-    let mut failed_users: Vec<String> = missing_users
-        .into_iter()
-        .filter_map(|id| user_names.get(&id))
-        .map(|name| format!("{}: No messages found in channel", name))
-        .collect();
-
-    failed_users.sort();
-
     let skipped_count = members.len() - initial_missing_count;
 
     tracing::info!(
-        "Finished scrape_intros execution. Scraped: {}, Skipped (already in DB): {}, Not Found: {}, DB Errors: {}",
+        "Finished scrape_intros execution. Scraped: {}, Skipped (already in DB with an intro): {}, No intro found: {}, DB Errors: {}",
         scraped_count,
         skipped_count,
-        failed_users.len(),
+        missing_users.len(),
         db_errors
     );
 
-    let failed_summary = if failed_users.is_empty() {
-        "None".to_string()
-    } else {
-        let max_display = 10;
-        let display_users: Vec<_> = failed_users.iter().take(max_display).collect();
-        let mut s = format!("{:#?}", display_users);
-        if failed_users.len() > max_display {
-            s.push_str(&format!(
-                "\n...and {} more",
-                failed_users.len() - max_display
-            ));
-        }
-        s
-    };
-
     Ok((
         format!(
-            "Scraped {} new messages.\nSkipped (already in db): {}\nFailed ({} total): {}",
+            "Scraped {} new messages.\nSkipped (already in db): {}\nNo intro found (may include early admins wihtout an intro): {}",
             scraped_count,
             skipped_count,
-            failed_users.len(),
-            failed_summary
+            missing_users.len(),
         ),
         None,
     ))
@@ -186,6 +183,6 @@ pub async fn run(
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("scrape_intros").description(
-        "Scrapes introduction messages from all users in the intro channel (requires SCRAPER_ROLE_ID)",
+        "Scrapes introduction messages from all users that posted an intro (requires SCRAPER_ROLE_ID)",
     )
 }

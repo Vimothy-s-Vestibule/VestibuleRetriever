@@ -1,4 +1,4 @@
-#![allow(dead_code, unused)]
+// #![allow(dead_code, unused)]
 #![allow(clippy::result_large_err)]
 pub use unidb::models::DiscordMessage;
 
@@ -8,7 +8,6 @@ pub mod commands;
 
 use diesel::prelude::*;
 use diesel_async::{pooled_connection::deadpool::Pool, AsyncPgConnection, RunQueryDsl};
-use std::collections::HashSet;
 use unidb::diesel_schema::{messages, vestibule_users};
 use unidb::models::{RecordStatus, VestibuleUserRecord};
 
@@ -45,7 +44,7 @@ pub async fn insert_introduction_message(
 
 pub async fn get_existing_user_ids(
     pool: &Pool<AsyncPgConnection>,
-) -> Result<HashSet<String>, AppError> {
+) -> Result<Vec<String>, AppError> {
     let mut conn = pool
         .get()
         .await
@@ -58,7 +57,16 @@ pub async fn get_existing_user_ids(
         .await
         .map_err(AppError::DatabaseError)?;
 
-    Ok(user_ids.into_iter().collect())
+    Ok(user_ids)
+}
+
+fn all_elements_unique<T>(iter: T) -> bool
+where
+    T: IntoIterator,
+    T::Item: Eq + std::hash::Hash,
+{
+    let mut uniq = std::collections::HashSet::new();
+    iter.into_iter().all(move |x| uniq.insert(x))
 }
 
 #[derive(Error, Debug)]

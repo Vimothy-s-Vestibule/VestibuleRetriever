@@ -68,6 +68,7 @@ async fn main() -> Result<(), AppError> {
         .map_err(|e| AppError::AppError(Box::new(e)))?;
 
     // Perms error on normal systems
+    //TODO Modify this path in docker health check
     tokio::fs::write("/tmp/ready", "1")
         .await
         .map_err(|e| AppError::AppError(Box::new(e)))?;
@@ -134,9 +135,7 @@ impl EventHandler for Handler {
                 )
                 .await
             }
-            "my_diagram" => {
-                commands::my_diagram::run(&ctx, &options, command_user_id, &self.pool).await
-            }
+            "my_diagram" => commands::my_diagram::run(&options, command_user_id, &self.pool).await,
 
             _ => Ok(("not implemented".to_string(), None)),
         };

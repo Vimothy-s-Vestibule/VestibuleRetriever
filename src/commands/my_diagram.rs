@@ -1,4 +1,4 @@
-use serenity::all::{Context, CreateCommand, ResolvedOption, UserId};
+use serenity::all::{CreateCommand, ResolvedOption, UserId};
 
 use crate::AppError;
 use diesel::prelude::*;
@@ -11,7 +11,6 @@ use unidb::models::VestibuleUserRecord;
     fields(username = %command_user_id.to_string())
 )]
 pub async fn run(
-    ctx: &Context,
     _options: &[ResolvedOption<'_>],
     command_user_id: UserId,
     pool: &diesel_async::pooled_connection::deadpool::Pool<diesel_async::AsyncPgConnection>,
