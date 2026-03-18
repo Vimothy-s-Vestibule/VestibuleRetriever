@@ -3,8 +3,8 @@ use serenity::all::{CreateCommand, ResolvedOption, UserId};
 use crate::AppError;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
-use unidb::diesel_schema::vestibule_users;
-use unidb::models::VestibuleUserRecord;
+use unidb::diesel_schema::{scores, vestibule_users};
+use unidb::models::{ScoreRecord, VestibuleUserRecord};
 
 #[tracing::instrument(
     skip_all,
@@ -22,7 +22,7 @@ pub async fn run(
 
     let user_id_str = command_user_id.get().to_string();
 
-    let record_opt: Option<VestibuleUserRecord> = vestibule_users::table
+    let user_record: Option<VestibuleUserRecord> = vestibule_users::table
         .filter(vestibule_users::discord_user_id.eq(&user_id_str))
         .select(VestibuleUserRecord::as_select())
         .first(&mut conn)
@@ -30,21 +30,42 @@ pub async fn run(
         .optional()
         .map_err(AppError::DatabaseError)?;
 
-    let record = match record_opt {
+    let record = match user_record {
+        Some(r) => r,
+        None => {
+            return Ok(("You are not in the user database.".to_string(), None));
+        }
+    };
+
+    let score_id = match record.score_id {
+        Some(id) => id,
+        None => {
+            return Ok(("You haven't been scored yet!".to_string(), None));
+        }
+    };
+
+    let score_record = match scores::table
+        .filter(scores::score_id.eq(&score_id))
+        .select(ScoreRecord::as_select())
+        .first(&mut conn)
+        .await
+        .optional()
+        .map_err(AppError::DatabaseError)?
+    {
         Some(r) => r,
         None => {
             return Ok((
-                "You haven't posted an introduction or haven't been scored yet!".to_string(),
+                "Your intro diagram has not been generated as your intro has not been processed yet, check back later.".to_string(),
                 None,
             ));
         }
     };
 
-    let diagram_bytes = match record.intro_diagram {
+    let diagram_bytes = match score_record.intro_diagram {
         Some(bytes) => bytes,
         None => {
             return Ok((
-                "Your diagram is still being processed or could not be generated.".to_string(),
+                "Your intro diagram has not been generated as your intro has not been processed yet, check back later.".to_string(),
                 None,
             ));
         }

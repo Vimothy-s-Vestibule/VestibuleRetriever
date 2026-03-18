@@ -128,22 +128,22 @@ pub async fn run(
 
             // If this message belongs to someone we are looking for
             if missing_users.remove(&author_id) {
-                let username = user_names.get(&author_id).cloned().unwrap_or_default();
-
                 let discord_msg = DiscordMessage {
                     user_id: author_id.get().to_string(),
                     content: message.content.clone(),
                     message_id: message.id.get().to_string(),
-                    created_at: *message.timestamp,
+                    sent_at: *message.timestamp,
+                    added_at: chrono::Utc::now(),
+                    score_id: None,
                 };
 
                 tracing::info!(
                     "Found and inserting introduction message for user: {}",
-                    username
+                    author_id
                 );
 
                 if let Err(e) = crate::insert_introduction_message(&mut conn, &discord_msg).await {
-                    tracing::error!("Failed to store message for {}: {}", username, e);
+                    tracing::error!("Failed to store message for {}: {}", author_id, e);
                     db_errors += 1;
                 } else {
                     scraped_count += 1;
