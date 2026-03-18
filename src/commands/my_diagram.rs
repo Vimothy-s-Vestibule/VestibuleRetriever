@@ -6,10 +6,6 @@ use diesel_async::RunQueryDsl;
 use unidb::diesel_schema::{scores, vestibule_users};
 use unidb::models::{ScoreRecord, VestibuleUserRecord};
 
-#[tracing::instrument(
-    skip_all,
-    fields(username = %command_user_id.to_string())
-)]
 pub async fn run(
     _options: &[ResolvedOption<'_>],
     command_user_id: UserId,
@@ -22,53 +18,48 @@ pub async fn run(
 
     let user_id_str = command_user_id.get().to_string();
 
-    let user_record: Option<VestibuleUserRecord> = vestibule_users::table
+    let Some(record) = vestibule_users::table
         .filter(vestibule_users::discord_user_id.eq(&user_id_str))
         .select(VestibuleUserRecord::as_select())
         .first(&mut conn)
         .await
         .optional()
-        .map_err(AppError::DatabaseError)?;
-
-    let record = match user_record {
-        Some(r) => r,
-        None => {
-            return Ok(("You are not in the user database.".to_string(), None));
-        }
+        .map_err(AppError::DatabaseError)?
+    else {
+        return Ok((
+            "You haven't posted an introduction or haven't been added to the database yet!"
+                .to_string(),
+            None,
+        ));
     };
 
-    let score_id = match record.score_id {
-        Some(id) => id,
-        None => {
-            return Ok(("You haven't been scored yet!".to_string(), None));
-        }
+    let Some(score_id) = record.score_id else {
+        return Ok((
+            "Your intro hasn't been processed yet. Please check back later!".to_string(),
+            None,
+        ));
     };
 
-    let score_record = match scores::table
+    let Some(score_record) = scores::table
         .filter(scores::score_id.eq(&score_id))
         .select(ScoreRecord::as_select())
         .first(&mut conn)
         .await
         .optional()
         .map_err(AppError::DatabaseError)?
-    {
-        Some(r) => r,
-        None => {
-            return Ok((
-                "Your intro diagram has not been generated as your intro has not been processed yet, check back later.".to_string(),
-                None,
-            ));
-        }
+    else {
+        return Ok((
+            "Something went wrong: Your score record could not be found.".to_string(),
+            None,
+        ));
     };
 
-    let diagram_bytes = match score_record.intro_diagram {
-        Some(bytes) => bytes,
-        None => {
-            return Ok((
-                "Your intro diagram has not been generated as your intro has not been processed yet, check back later.".to_string(),
-                None,
-            ));
-        }
+    let Some(diagram_bytes) = score_record.intro_diagram else {
+        return Ok((
+            "Your personality diagram is still being generated. Please check back later!"
+                .to_string(),
+            None,
+        ));
     };
 
     Ok((
@@ -79,5 +70,5 @@ pub async fn run(
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("my_diagram")
-        .description("Get your HEXACO personality diagram based on your intro")
+        .description("Get your HEXACO personality diagram based on your introduction.")
 }
